@@ -1,7 +1,6 @@
 BÀI TẬP MÔN AN TOÀN VÀ BẢO MẬT THÔNG TIN
-Họ và tên:
 
-Nguyễn Văn Tuyến
+Họ và tên: Nguyễn Văn Tuyến
 
 Bài 1. Tìm hiểu thuật toán mã hóa hiện đại DES và AES
 1.1 Thuật toán DES
