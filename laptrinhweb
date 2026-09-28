@@ -1,0 +1,182 @@
+# BÁO CÁO BÀI TẬP MÔN LẬP TRÌNH WEB
+
+- **Bài tập:** Bài 1 & Bài 2 (Cấu hình Docker Compose, Nginx Virtual Host và API Node-RED)
+- **Môi trường thực thi:** Linux (WSL / Ubuntu) trên Windows
+- **Hình thức nộp:** Public GitHub Repository
+
+---
+
+## 🛠️ 1. Cấu trúc thư mục dự án
+
+```text
+.
+├── docker-compose.yml          # Cấu hình 5 dịch vụ Docker
+├── nginx/
+│   └── conf.d/
+│       ├── site1.conf          # Cấu hình Virtual Host & Proxy API cho site1.local
+│       └── site2.conf          # Cấu hình Virtual Host cho site2.local
+├── html/
+│   ├── site1/
+│   │   └── index.html         # Mã nguồn Website 1 (Tích hợp JS gọi API)
+│   └── site2/
+│       └── index.html         # Mã nguồn Website 2
+└── README.md                   # Báo cáo chi tiết bài tập
+🚀 2. BÀI TẬP 1: Giả lập Linux, Docker Compose & Nginx Virtual Host2.1. Yêu cầuGiả lập OS Linux (WSL / Ubuntu).Cài đặt Docker Compose.Cài đặt 5 dịch vụ: nginx, nodered, mariadb, phpmyadmin, cloudflared.Cấu hình Nginx phục vụ 2 website chạy song song với 2 domain khác nhau (site1.local và site2.local).2.2. File cấu hình Docker Compose (docker-compose.yml)Dự án khởi tạo 5 container chạy ngầm kết nối qua bridge network:YAMLversion: '3.8'
+
+services:
+  web_nginx:
+    image: nginx:latest
+    container_name: web_nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./html:/usr/share/nginx/html
+      - ./nginx/conf.d:/etc/nginx/conf.d
+    restart: always
+
+  nodered:
+    image: nodered/node-red:latest
+    container_name: web_nodered
+    ports:
+      - "1880:1880"
+    volumes:
+      - nodered_data:/data
+    restart: always
+
+  mariadb:
+    image: mariadb:latest
+    container_name: web_mariadb
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: mydatabase
+      MYSQL_USER: myuser
+      MYSQL_PASSWORD: mypassword
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    restart: always
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: web_phpmyadmin
+    ports:
+      - "8080:80"
+    environment:
+      PMA_HOST: mariadb
+    depends_on:
+      - mariadb
+    restart: always
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: web_cloudflared
+    command: tunnel --no-autoupdate run
+    restart: always
+
+volumes:
+  nodered_data:
+  mariadb_data:
+2.3. Cấu hình Virtual Host NginxWebsite 1 (nginx/conf.d/site1.conf):Nginxserver {
+    listen 80;
+    server_name site1.local;
+
+    location / {
+        root /usr/share/nginx/html/site1;
+        index index.html;
+    }
+}
+Website 2 (nginx/conf.d/site2.conf):Nginxserver {
+    listen 80;
+    server_name site2.local;
+
+    location / {
+        root /usr/share/nginx/html/site2;
+        index index.html;
+    }
+}
+2.4. Phân giải tên miền cục bộ (File Hosts Windows)Đã thêm dòng khai báo vào file C:\Windows\System32\drivers\etc\hosts:Plaintext127.0.0.1 site1.local site2.local
+⚡ 3. BÀI TẬP 2: Tạo API trên Node-RED, Nginx Proxy & JavaScript Fetch3.1. Yêu cầuTạo API đơn giản trên Node-RED sử dụng node http in (GET /tacke) + function + http response.Trả về cấu trúc dữ liệu JSON:JSON{
+  "ok": 1,
+  "msg": "thành công",
+  "dssv": [
+    {"name": "Cốp", "money": 123},
+    {"name": "David", "money": 456}
+  ]
+}
+Cấu hình Nginx Proxy để chuyển tiếp đường dẫn /api/ sang dịch vụ Node-RED (port 1880).Viết mã JavaScript phía giao diện HTML gọi API và hiển thị kết quả lên giao diện web.3.2. Mã nguồn Node-RED Function NodeJavaScriptmsg.payload = {
+    "ok": 1,
+    "msg": "thành công",
+    "dssv": [
+        {"name": "Cốp", "money": 123},
+        {"name": "David", "money": 456}
+    ]
+};
+return msg;
+3.3. Cấu hình Nginx Reverse Proxy (nginx/conf.d/site1.conf)Cập nhật file cấu hình của site1.local để điều hướng yêu cầu API:Nginxserver {
+    listen 80;
+    server_name site1.local;
+
+    location / {
+        root /usr/share/nginx/html/site1;
+        index index.html;
+    }
+
+    # Proxy request từ /api/ sang Node-RED container
+    location /api/ {
+        proxy_pass http://nodered:1880/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+3.4. Mã nguồn Giao diện & JavaScript (html/site1/index.html)HTML<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Bài 2 - Gọi API Node-RED</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 30px; }
+        button { padding: 10px 15px; cursor: pointer; }
+        ul { margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Bài 2: Gọi API từ Node-RED</h1>
+    <button onclick="fetchApi()">Lấy danh sách sinh viên</button>
+    <div id="result" style="margin-top: 15px;"></div>
+
+    <script>
+        function fetchApi() {
+            fetch('/api/tacke')
+                .then(response => response.json())
+                .then(data => {
+                    let content = `<p><b>Trạng thái:</b> ${data.msg}</p><ul>`;
+                    data.dssv.forEach(sv => {
+                        content += `<li>Tên: <b>${sv.name}</b> - Số tiền: ${sv.money}</li>`;
+                    });
+                    content += '</ul>';
+                    document.getElementById('result').innerHTML = content;
+                })
+                .catch(err => {
+                    console.error('Lỗi kết nối API:', err);
+                    document.getElementById('result').innerText = 'Lỗi kết nối đến API Node-RED!';
+                });
+        }
+    </script>
+</body>
+</html>
+🛠️ 4. Hướng dẫn khởi chạy dự ánKhởi chạy hệ thống container:Bashdocker compose up -d
+Kiểm tra trạng thái các dịch vụ:Bashdocker compose ps
+Nạp lại cấu hình Nginx (khi có thay đổi):Bashdocker exec -it web_nginx nginx -s reload
+Truy cập ứng dụng:Website 1: http://site1.localWebsite 2: http://site2.localNode-RED Dashboard: http://localhost:1880phpMyAdmin: http://localhost:8080
+---
+
+### **2. Các bước lưu và đẩy file `README.md` lên GitHub**
+
+Mở **Terminal (Ubuntu)** tại thư mục dự án của bạn và chạy 4 lệnh đơn giản sau:
+
+1. **Tạo file `README.md`:**
+   Mở trình biên soạn để tạo file:
+   ```bash
+   nano README.md
+Dán toàn bộ nội dung trong ô mã ở mục 1 vào, sau đó nhấn Ctrl + O $\rightarrow$ Enter để lưu, và Ctrl + X để thoát.Thêm file và commit:Bashgit add README.md
+git commit -m "Add full README documentation for Exercise 1 and 2"
+Đẩy lên GitHub:Bashgit push origin main
